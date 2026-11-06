@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="MP Test">
+<meta name="theme-color" content="#0d9488">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="stylesheet" href="style.css">
+<title>Mon Patrimoine — Test coffre</title>
+</head>
+<body>
+<header>
+  <h1>Mon Patrimoine — Test du coffre</h1>
+  <div class="banner">DONNÉES FICTIVES — version de test, aucune donnée réelle</div>
+</header>
+<div id="statusbar" class="statusbar">Chargement…</div>
+<main id="app"></main>
+<div id="msg"></div>
+<section class="card">
+  <h2>Journal de test (en mémoire, non enregistré)</h2>
+  <ol id="journal"></ol>
+</section>
+<footer><p>Aucune donnée n’est envoyée hors de cet appareil.</p></footer>
+<script type="module" src="app.js"></script>
+</body>
+</html>
