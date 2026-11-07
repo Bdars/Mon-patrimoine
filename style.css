@@ -149,3 +149,16 @@ details.detail summary { min-height: 44px; display: flex; align-items: center; c
 .champ-periode-wrap { display: flex; gap: 8px; align-items: center; max-width: 100%; }
 .champ-periode { min-height: 44px; min-width: 0; flex: 1 1 auto; box-sizing: border-box; padding: 8px 10px; font: inherit; font-size: 16px; border: 1px solid var(--bord); border-radius: 10px; background: var(--fond); color: var(--texte); -webkit-appearance: none; appearance: none; }
 .petit-bouton { min-height: 44px; padding: 8px 12px; flex: 0 0 auto; }
+
+/* Menu des sections : masqué par défaut (l'attribut hidden doit primer sur display), panneau déroulant sous l'en-tête. */
+.menu-list[hidden] { display: none; }
+/* Dans le flux, sous l’en-tête : le contenu est repoussé, rien ne se superpose. Hauteur bornée, défilement propre. */
+.menu-list { margin: 0; padding: 8px 12px 12px; max-height: calc(100vh - 72px); overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+.menu-list a { min-height: 44px; font-size: 16px; }
+/* Bouton-lien (téléchargement de la sauvegarde) : même apparence que les boutons. */
+.bouton-lien { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; min-height: 44px; padding: 8px 14px; border-radius: 10px; border: 1px solid var(--bord); background: var(--carte); color: var(--texte); text-decoration: none; font: inherit; }
+.bouton-lien.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+/* Champs de la restauration : même hauteur tactile que les autres champs. */
+input[type="text"], input[type="password"], input[type="file"] { min-height: 44px; box-sizing: border-box; width: 100%; font-size: 16px; }
+.chk { min-height: 44px; display: flex; align-items: center; gap: 10px; }

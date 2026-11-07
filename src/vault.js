@@ -351,6 +351,55 @@ export function createVault({
     return { changed: true };
   }
 
+  // ----- vérification du mot de passe (sans modifier le coffre) -----
+  // Utilisé avant une exportation : le mot de passe doit correspondre à l'enveloppe enregistrée.
+  async function verifyPassword(password) {
+    if (status !== 'unlocked') throw new VaultError('locked', 'Coffre verrouillé');
+    await chain.catch(() => {});
+    if (dirty) throw new VaultError('unsaved', 'Modifications non enregistrées : réessayez dans un instant');
+    const k = await deriveKey(password, salt, meta.iter);
+    try {
+      await decryptWithKey(lastCommitted, k, meta.salt);
+    } catch (e) {
+      throw new VaultError('wrong_password', 'Mot de passe incorrect');
+    }
+    return true;
+  }
+
+  // ----- remplacement du contenu (restauration d'une sauvegarde) -----
+  // Le nouveau contenu est chiffré avec le mot de passe fourni (celui de la sauvegarde) ; il devient
+  // le mot de passe du coffre. Même garantie que changePassword : vérification puis écriture atomique.
+  // En cas d'échec, l'ancien contenu reste intact.
+  async function replaceState(password, newState) {
+    if (status !== 'unlocked') throw new VaultError('locked', 'Coffre verrouillé');
+    if (typeof password !== 'string' || password.length < MIN_PASSWORD_LENGTH)
+      throw new VaultError('weak_password', `Mot de passe trop court (${MIN_PASSWORD_LENGTH} caractères minimum)`);
+    if (!newState || typeof newState !== 'object') throw new VaultError('invalid_value', 'Contenu invalide');
+    await chain.catch(() => {});
+    const s2 = newSalt();
+    const k2 = await deriveKey(password, s2, meta.iter);
+    const env2 = await encryptWithKey(newState, k2, { salt: s2, iter: meta.iter });
+    let check;
+    try { check = await decryptWithKey(env2, k2, toB64(s2)); }
+    catch (e) { throw new VaultError('verify_failed', 'Vérification du nouveau chiffrement échouée : aucune donnée modifiée'); }
+    if (JSON.stringify(check) !== JSON.stringify(newState))
+      throw new VaultError('verify_failed', 'Contenu différent après chiffrement : aucune donnée modifiée');
+    const m2 = metaOf(s2);
+    try {
+      await backend.commit([
+        { key: K.CURRENT, value: env2 },
+        { key: K.META, value: m2 },
+        { key: K.PREV, delete: true }
+      ]);
+    } catch (e) {
+      throw new VaultError('storage_error', 'Écriture impossible : données précédentes conservées');
+    }
+    meta = m2; key = k2; salt = s2; lastCommitted = env2; state = clone(newState);
+    dirty = false; saveStatus = 'saved'; lastSavedAt = clock(); lastError = null;
+    touch(); emit();
+    return { replaced: true };
+  }
+
   // ----- verrouillage automatique -----
   function touch() { lastActivity = clock(); }
 
@@ -380,7 +429,7 @@ export function createVault({
 
   return {
     open, create, unlock, lock,
-    getState, update, retry, changePassword,
+    getState, update, retry, changePassword, verifyPassword, replaceState,
     touch, checkIdle, setAutoLockMinutes,
     status: () => publicStatus(),
     _internal: { backend }   // accès réservé aux tests (inspection des enveloppes)

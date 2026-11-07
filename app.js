@@ -2,6 +2,7 @@
 // Aucun appel réseau. Toutes les données passent par le coffre chiffré (src/vault.js).
 // Espaces logiques : state.finance (phase 2) et state.retraite (phase 3), un seul mot de passe.
 import { createVault, idbBackend, AUTOLOCK_MIN_RANGE, VaultError } from './src/vault.js';
+import { creerSauvegarde, lireSauvegarde, nomFichierSauvegarde, TAILLE_MAX_SAUVEGARDE } from './src/sauvegarde.js';
 import * as C from './finance/core.js';
 import { completerEspace, espaceFinanceVide, aujourdhui } from './finance/model.js';
 import { jeuFictif } from './finance/jeu-fictif.js';
@@ -93,7 +94,7 @@ function ouvrirMenu(ouvrir) {
   const btn = document.getElementById('menu-btn');
   menu.hidden = !ouvrir;
   btn.setAttribute('aria-expanded', String(ouvrir));
-  // Le menu s'insère sous l'en-tête : on remonte en haut pour qu'il soit visible même après un long défilement.
+  // Le panneau est dans l’en-tête : on remonte en haut pour qu’il soit visible même après un long défilement.
   if (ouvrir) window.scrollTo({ top: 0, behavior: 'auto' });
 }
 function fermerMenu() { ouvrirMenu(false); }
@@ -155,7 +156,7 @@ function vueCreation() {
       log('Création refusée : ' + msg);
     }
   };
-  return el('section', { class: 'card' },
+  const creation = el('section', { class: 'card' },
     el('h2', { text: 'Créer votre coffre' }),
     el('div', { class: 'alert', text: '⚠️ Si vous perdez ce mot de passe, vos données seront définitivement perdues. Aucune récupération n’est possible.' }),
     p1, p2,
@@ -163,6 +164,12 @@ function vueCreation() {
     el('p', { id: 'msg' }),
     el('p', { class: 'petit', text: 'Le coffre est vide. Les données ne sont enregistrées qu’une fois chiffrées sur cet appareil.' })
   );
+  return el('div', {},
+    creation,
+    el('section', { class: 'card' },
+      el('h2', { text: 'Ou restaurer une sauvegarde' }),
+      el('p', { class: 'petit', text: 'Sur un nouvel appareil, la sauvegarde crée le coffre. Il vous faut le mot de passe de cette sauvegarde.' }),
+      zoneRestauration({ nouveau: true })));
 }
 
 function vueVerrouillage() {
@@ -213,6 +220,134 @@ function vueSection(s) {
     el('p', { text: `Rubrique réservée : ${enCours}. Aucune donnée n’est affichée ni modifiée pour l’instant.` }),
     el('p', { class: 'petit', text: 'Le coffre fonctionne déjà : verrouillage automatique, navigation et stockage chiffré.' })
   );
+}
+
+
+// ----- sauvegarde et restauration (fichier chiffré, aucune donnée en clair) -----
+const SCHEMA_COURANT = INITIAL_STATE.schema;
+// Messages séparés : export (#msg-export) et restauration (#msg-sauv).
+const ecrireMsg = (id, t, classe = '') => { const n = document.getElementById(id); if (n) { n.textContent = t; n.className = classe; } };
+const messageSauvegarde = e => (e && e.message) ? e.message : errText(e);
+
+function lireFichierTexte(f) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(String(r.result));
+    r.onerror = () => rej(new Error('Lecture du fichier impossible'));
+    r.readAsText(f);
+  });
+}
+
+// Export : le mot de passe actuel est exigé. Le lien de téléchargement est créé pour être touché par l'utilisateur
+// (un téléchargement lancé après un calcul asynchrone peut être bloqué par Safari iOS).
+function carteExportation() {
+  const pw = el('input', { id: 'sauv-pw-export', type: 'password', autocomplete: 'current-password', placeholder: 'Mot de passe actuel du coffre' });
+  const zone = el('div', { id: 'sauv-export-zone' });
+  const preparer = async () => {
+    zone.replaceChildren();
+    try {
+      await vault.verifyPassword(pw.value);
+      const texte = await creerSauvegarde(vault.getState(), pw.value, { schema: SCHEMA_COURANT });
+      const url = URL.createObjectURL(new Blob([texte], { type: 'application/json' }));
+      const lien = el('a', { class: 'bouton-lien primary', href: url, download: nomFichierSauvegarde(), text: 'Enregistrer le fichier chiffré' });
+      lien.addEventListener('click', () => setTimeout(() => URL.revokeObjectURL(url), 60000));
+      zone.replaceChildren(lien);
+      pw.value = '';
+      log('Sauvegarde chiffrée préparée');
+      ecrireMsg('msg-export', 'Sauvegarde prête. Appuyez sur « Enregistrer le fichier chiffré », puis choisissez « Sur mon iPhone » dans Fichiers.');
+    } catch (e) {
+      ecrireMsg('msg-export', messageSauvegarde(e), 'err');
+      log('Sauvegarde refusée : ' + messageSauvegarde(e));
+    }
+  };
+  return el('section', { class: 'card' },
+    el('h2', { text: 'Exporter une sauvegarde' }),
+    el('p', { class: 'petit', text: 'La sauvegarde contient Finance et Retraite, chiffrés avec le mot de passe actuel. Conservez-la hors de cet appareil.' }),
+    pw,
+    el('div', { class: 'row' }, el('button', { class: 'primary', type: 'button', text: 'Préparer la sauvegarde', onclick: preparer })),
+    zone,
+    el('p', { id: 'msg-export' })
+  );
+}
+
+// Restauration : vérification d'abord (aucune écriture), puis action explicite.
+// nouveau = true : appareil sans coffre (création). nouveau = false : remplacement du coffre existant.
+function zoneRestauration({ nouveau }) {
+  let verifie = null;
+  const fichier = el('input', { id: 'sauv-fichier', type: 'file', accept: '.json,application/json' });
+  const pw = el('input', { id: 'sauv-pw-import', type: 'password', autocomplete: 'off', placeholder: 'Mot de passe de cette sauvegarde' });
+  const apercu = el('div', { id: 'sauv-apercu', class: 'petit' });
+  const confirmation = el('input', { id: 'sauv-confirm', type: 'checkbox' });
+  const mot = el('input', { id: 'sauv-mot', type: 'text', autocomplete: 'off', autocapitalize: 'characters', placeholder: 'Tapez REMPLACER' });
+  const bloc = el('div', { id: 'sauv-remplacement', hidden: nouveau },
+    el('p', { class: 'alert', text: 'Les données actuelles de cet appareil seront remplacées par celles de la sauvegarde. Le mot de passe du coffre deviendra celui de la sauvegarde. Exportez d’abord la sauvegarde actuelle si vous voulez la conserver.' }),
+    el('label', { class: 'chk' }, confirmation, el('span', { text: 'Je comprends et je confirme le remplacement' })),
+    el('label', {}, el('span', { text: 'Confirmation par mot' }), mot));
+  const action = el('button', {
+    id: 'sauv-action', class: 'primary', type: 'button', disabled: true,
+    text: nouveau ? 'Créer le coffre à partir de cette sauvegarde' : 'Remplacer les données de cet appareil'
+  });
+  const majAction = () => {
+    action.disabled = !verifie || (!nouveau && !(confirmation.checked && mot.value === 'REMPLACER'));
+  };
+  const invalider = () => { verifie = null; apercu.replaceChildren(); majAction(); };
+  fichier.addEventListener('change', invalider);
+  pw.addEventListener('input', invalider);
+  confirmation.addEventListener('change', majAction);
+  mot.addEventListener('input', majAction);
+
+  const verifier = async () => {
+    invalider();
+    const f = fichier.files && fichier.files[0];
+    if (!f) { ecrireMsg('msg-sauv', 'Choisissez d’abord un fichier de sauvegarde.', 'err'); return; }
+    if (f.size > TAILLE_MAX_SAUVEGARDE) { ecrireMsg('msg-sauv', 'Ce fichier est trop volumineux pour une sauvegarde.', 'err'); return; }
+    try {
+      const texte = await lireFichierTexte(f);
+      verifie = await lireSauvegarde(texte, pw.value, { schema: SCHEMA_COURANT });
+      const r = verifie.resume;
+      const date = r.creeLe ? new Date(r.creeLe).toLocaleString('fr-FR') : 'inconnue';
+      apercu.replaceChildren(
+        el('div', { text: `Sauvegarde créée le ${date}` }),
+        el('div', { text: `Contenu : ${r.revenus} revenu(s), ${r.depensesFixes} dépense(s) fixe(s), ${r.depensesVariables} dépense(s) variable(s), ${r.epargne} mouvement(s) d’épargne, ${r.dettes} dette(s), ${r.objectifs} objectif(s), ${r.projets} projet(s), ${r.patrimoine} élément(s) de patrimoine.` }),
+        el('div', { text: r.fictif ? 'Données FICTIVES de test.' : 'Données personnelles (non fictives).' }));
+      ecrireMsg('msg-sauv', 'Sauvegarde vérifiée. Aucune donnée n’a encore été modifiée.');
+      log('Sauvegarde vérifiée (aucune écriture)');
+      majAction();
+    } catch (e) {
+      ecrireMsg('msg-sauv', messageSauvegarde(e), 'err');
+      log('Vérification de la sauvegarde refusée : ' + messageSauvegarde(e));
+    }
+  };
+
+  action.addEventListener('click', async () => {
+    if (!verifie) return;
+    try {
+      if (nouveau) await vault.create(pw.value, pw.value, verifie.contenu);
+      else await vault.replaceState(pw.value, verifie.contenu);
+      pw.value = '';
+      log(nouveau ? 'Coffre créé à partir de la sauvegarde' : 'Données remplacées par la sauvegarde');
+      ecrireMsg('msg-sauv', '');
+    } catch (e) {
+      ecrireMsg('msg-sauv', messageSauvegarde(e), 'err');
+      log('Restauration refusée : ' + messageSauvegarde(e));
+    }
+  });
+
+  return el('div', {},
+    el('label', {}, el('span', { text: 'Fichier de sauvegarde (.json)' }), fichier),
+    el('label', {}, el('span', { text: 'Mot de passe de la sauvegarde' }), pw),
+    el('div', { class: 'row' }, el('button', { type: 'button', text: 'Vérifier la sauvegarde', onclick: verifier })),
+    apercu,
+    bloc,
+    el('div', { class: 'row' }, action),
+    el('p', { id: 'msg-sauv' }));
+}
+
+function carteRestauration() {
+  return el('section', { class: 'card' },
+    el('h2', { text: 'Restaurer une sauvegarde' }),
+    el('p', { class: 'petit', text: 'Le fichier est vérifié (intégrité, mot de passe, format) avant toute écriture. Un fichier corrompu ou incompatible est refusé.' }),
+    zoneRestauration({ nouveau: false }));
 }
 
 function vueDonnees() {
@@ -274,6 +409,8 @@ function vueDonnees() {
         }
       }))
     ),
+    carteExportation(),
+    carteRestauration(),
     el('section', { class: 'card' },
       el('h2', { text: 'Changer le mot de passe' }),
       el('p', { class: 'petit', text: 'Le nouveau mot de passe remplace l’ancien pour les deux espaces (Finance et Retraite).' }),
@@ -323,6 +460,12 @@ document.getElementById('menu-btn').addEventListener('click', () => {
   const ouvert = document.getElementById('menu').hidden;
   ouvrirMenu(ouvert);
 });
+// Le panneau des sections se ferme à l'appui extérieur et à la touche Échap.
+document.addEventListener('click', e => {
+  if (document.getElementById('menu').hidden) return;
+  if (!e.target.closest || !e.target.closest('header.top')) fermerMenu();
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape') fermerMenu(); });
 
 // ----- démarrage -----
 async function init() {
