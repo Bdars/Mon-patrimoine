@@ -1,5 +1,6 @@
-// Mon Patrimoine V5 — briques d'interface partagées. Tout le texte passe par textContent (pas d'innerHTML).
+// Mon Patrimoine V5 — briques d'interface partagées. Tout le texte passe par textContent (jamais de HTML construit à partir de chaînes).
 import { SPECS, optionsDe, valeursPour } from '../finance/model.js';
+import { icone } from './icones.js';
 
 export function el(tag, attrs = {}, ...enfants) {
   const n = document.createElement(tag);
@@ -24,9 +25,10 @@ export const labM = m => MOIS_COURT[+m.slice(5) - 1] + ' ' + m.slice(2, 4);
 export const labL = m => MOIS_LONG[+m.slice(5) - 1] + ' ' + m.slice(0, 4);
 export const cls = n => (n < 0 ? 'neg' : 'pos');
 
-// Carte de chiffre clé. hi : mise en avant.
-export function kpi(libelle, valeur, sous = '', classe = '', hi = false) {
-  return el('div', { class: 'k' + (hi ? ' hi' : '') },
+// Carte de chiffre clé. hi : mise en avant. opts : { icone, ton } (ton : 'revenu', 'depense', 'epargne', 'dette', 'patrimoine').
+export function kpi(libelle, valeur, sous = '', classe = '', hi = false, opts = {}) {
+  return el('div', { class: 'k' + (hi ? ' hi' : '') + (opts.ton ? ' ton-' + opts.ton : '') },
+    opts.icone ? el('span', { class: 'k-ico', 'aria-hidden': 'true' }, icone(opts.icone, 18)) : null,
     el('small', { text: libelle }),
     el('b', { class: classe, text: valeur }),
     sous ? el('i', { text: sous }) : null);

@@ -1,5 +1,5 @@
 // Service worker V5 : cache d’application uniquement. Aucune donnée financière n’est mise en cache.
-const CACHE = 'mp-v5-phase2-7';
+const CACHE = 'mp-v5-premium-2';
 const FILES = [
   './',
   './app.js',
@@ -9,6 +9,7 @@ const FILES = [
   './finance/model.js',
   './finance/validate.js',
   './icons/icon-180.png',
+  './icons/icon.svg',
   './icons/icon-192.png',
   './icons/icon-512.png',
   './index.html',
@@ -18,6 +19,7 @@ const FILES = [
   './src/vault.js',
   './style.css',
   './views/finance.js',
+  './views/icones.js',
   './views/ui.js'
 ];
 

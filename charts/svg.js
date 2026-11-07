@@ -2,7 +2,8 @@
 // Partie 1 : calculs purs (layout*, niceScale, anneau), testables sous Node.
 // Partie 2 : dessin dans le navigateur (courbe, barres, horizontal, anneau). Aucune ressource externe.
 
-export const PALETTE = ['#0d9488', '#6366f1', '#f59e0b', '#ef4444', '#06b6d4', '#8b5cf6', '#84cc16', '#ec4899', '#f97316', '#14b8a6', '#64748b', '#a855f7', '#eab308', '#3b82f6', '#10b981'];
+// Palette de la charte : bleu nuit, or, vert, rouge, puis teintes sobres (lisibles en clair et en sombre).
+export const PALETTE = ['#1d3557', '#b8892e', '#15803d', '#b42318', '#4f7cac', '#b45309', '#2f855a', '#8a6d3b', '#6b7a99', '#d69e2e', '#355e3b', '#7b3f61', '#3f6f8f', '#9c7a3c', '#4a5568'];
 const PAD = { l: 52, r: 10, t: 12, b: 26 };
 
 // Graduations rondes couvrant [min, max] ; 0 est toujours inclus.
@@ -81,7 +82,7 @@ export function layoutHorizontal(rows, { w = 320, rowH = 30 } = {}) {
     rows: rows.map((r, i) => ({
       label: r.label, y: 6 + i * rowH,
       wValeur: Math.max(0, r.value / maxV * iw), wMax: r.max != null ? Math.max(0, r.max / maxV * iw) : null,
-      value: r.value, max: r.max, color: r.over ? '#dc2626' : (r.color || PALETTE[0]), over: !!r.over
+      value: r.value, max: r.max, color: r.over ? '#b42318' : (r.color || PALETTE[0]), over: !!r.over
     }))
   };
 }

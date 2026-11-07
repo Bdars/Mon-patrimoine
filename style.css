@@ -1,16 +1,21 @@
+/* Charte « Premium bancaire » : bleu nuit, or discret, vert (revenus, épargne), rouge (dépenses), orange (alertes). */
 :root {
-  --fond: #f5f7f8; --carte: #ffffff; --texte: #1c2330; --doux: #5b6577; --bord: #d9dee7;
-  --accent: #0d9488; --ok: #17794a; --err: #b42318; --busy: #9a6100;
+  --fond: #f4f6fb; --carte: #ffffff; --texte: #0f1b33; --doux: #5b6578; --bord: #e1e6ef;
+  --accent: #1d3557; --on-accent: #ffffff; --marine: #13213d; --or: #b8892e;
+  --ok: #15803d; --err: #b42318; --busy: #b45309;
+  --ombre: 0 1px 2px rgba(15, 27, 51, 0.06), 0 6px 16px rgba(15, 27, 51, 0.05);
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --fond: #111418; --carte: #1a1f27; --texte: #e8ecf2; --doux: #9aa4b5; --bord: #2c3440;
-    --accent: #2dd4bf; --ok: #4cc38a; --err: #ff8a80; --busy: #f0b35a;
+    --fond: #0b1220; --carte: #131d2f; --texte: #e7ecf5; --doux: #9aa6bb; --bord: #26324a;
+    --accent: #9fb8e6; --on-accent: #0b1220; --marine: #0a1222; --or: #e0b45a;
+    --ok: #4ade80; --err: #ff8a80; --busy: #f5b65a; --ombre: none;
   }
 }
 :root[data-theme="dark"] {
-  --fond: #111418; --carte: #1a1f27; --texte: #e8ecf2; --doux: #9aa4b5; --bord: #2c3440;
-  --accent: #2dd4bf; --ok: #4cc38a; --err: #ff8a80; --busy: #f0b35a;
+  --fond: #0b1220; --carte: #131d2f; --texte: #e7ecf5; --doux: #9aa6bb; --bord: #26324a;
+  --accent: #9fb8e6; --on-accent: #0b1220; --marine: #0a1222; --or: #e0b45a;
+  --ok: #4ade80; --err: #ff8a80; --busy: #f5b65a; --ombre: none;
 }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--fond); color: var(--texte); font: 16px/1.45 -apple-system, system-ui, sans-serif; overflow-x: hidden; }
@@ -162,3 +167,69 @@ details.detail summary { min-height: 44px; display: flex; align-items: center; c
 /* Champs de la restauration : même hauteur tactile que les autres champs. */
 input[type="text"], input[type="password"], input[type="file"] { min-height: 44px; box-sizing: border-box; width: 100%; font-size: 16px; }
 .chk { min-height: 44px; display: flex; align-items: center; gap: 10px; }
+
+/* ===== Identité premium (V5 Premium) : présentation seule, aucune règle métier ===== */
+body { background: var(--fond); color: var(--texte); -webkit-font-smoothing: antialiased; }
+.top { background: var(--marine); color: #ffffff; border-bottom: 2px solid var(--or); }
+.top h1 { color: #ffffff; font-weight: 650; font-size: 17px; letter-spacing: 0.01em; }
+.top .logo { flex: 0 0 auto; border-radius: 8px; }
+.top .statusbar { color: rgba(255, 255, 255, 0.74); }
+.top .statusbar.ok { color: #86efac; } .top .statusbar.err { color: #fca5a5; } .top .statusbar.busy { color: #fcd34d; }
+.top button.menu { background: rgba(255, 255, 255, 0.08); color: #ffffff; border-color: rgba(255, 255, 255, 0.28); }
+.menu-list { background: var(--carte); border: 1px solid var(--bord); border-radius: 14px; margin: 12px 12px 0; box-shadow: var(--ombre); }
+.menu-list a { gap: 12px; border-radius: 10px; font-size: 15px; }
+.menu-list a .m-ico { display: inline-flex; width: 24px; justify-content: center; color: var(--or); }
+.menu-list a .m-lib { flex: 1 1 auto; }
+.menu-list a .phase { font-size: 11px; background: var(--fond); padding: 2px 8px; border-radius: 999px; }
+.menu-list a[aria-current="page"] { background: var(--fond); border-color: transparent; box-shadow: inset 3px 0 0 var(--or); font-weight: 650; }
+.marque { display: flex; flex-direction: column; align-items: center; gap: 8px; margin: 4px 0 16px; }
+.marque span { font-weight: 650; font-size: 18px; color: var(--texte); letter-spacing: 0.01em; }
+.card { border-radius: 14px; border-color: var(--bord); box-shadow: var(--ombre); padding: 18px; }
+h2 { font-size: 19px; font-weight: 650; letter-spacing: -0.01em; }
+.bloc-titre { font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--doux); font-weight: 650; margin: 18px 2px 8px; }
+.k { position: relative; border-radius: 14px; border-color: var(--bord); box-shadow: var(--ombre); padding: 12px 14px; border-left: 3px solid var(--bord); }
+.k small { font-size: 12px; padding-right: 26px; }
+.k b { font-size: 18px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.k-ico { position: absolute; top: 12px; right: 12px; display: inline-flex; color: var(--doux); }
+.k.ton-revenu { border-left-color: var(--ok); } .k.ton-revenu .k-ico { color: var(--ok); }
+.k.ton-epargne { border-left-color: var(--ok); } .k.ton-epargne .k-ico { color: var(--ok); }
+.k.ton-depense { border-left-color: var(--err); } .k.ton-depense .k-ico { color: var(--err); }
+.k.ton-dette { border-left-color: var(--busy); } .k.ton-dette .k-ico { color: var(--busy); }
+.k.ton-patrimoine { border-left-color: var(--or); } .k.ton-patrimoine .k-ico { color: var(--or); }
+.k.hi { border-color: var(--or); box-shadow: 0 0 0 1px var(--or) inset, var(--ombre); }
+.k.hi b { font-size: 21px; }
+.gros { font-size: 22px; font-weight: 650; }
+.pos { color: var(--ok); } .neg { color: var(--err); }
+.tag { border-radius: 999px; font-weight: 600; font-size: 12px; }
+.pb { height: 8px; background: var(--bord); border-radius: 999px; }
+.pb i { background: var(--accent); border-radius: 999px; }
+.pb.over i { background: var(--err); }
+.lib-cat { display: inline-flex; align-items: center; gap: 8px; }
+.lib-cat .ico { color: var(--doux); }
+.ico { flex: 0 0 auto; vertical-align: middle; }
+button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-weight: 550; border-radius: 12px; }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+button.danger { color: var(--err); border-color: var(--err); background: var(--carte); }
+.bouton-lien.primary { color: var(--on-accent); }
+.bouton-lien { gap: 8px; border-radius: 12px; }
+.alert { border-radius: 10px; border-left-color: var(--err); }
+.alert.info { border-left-color: var(--accent); }
+.ok { border-radius: 10px; }
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible, .champ-periode:focus-visible {
+  outline: 2px solid var(--or); outline-offset: 2px;
+}
+details.detail summary { color: var(--accent); }
+:root[data-theme="dark"] .top h1 { color: #e7ecf5; }
+:root:not([data-theme="light"]) .top h1 { color: #e7ecf5; }
+@media (min-width: 900px) {
+  /* PC : largeur de lecture élargie, quatre indicateurs par ligne. Le menu reste identique. */
+  main, .pied { max-width: 1080px; }
+  .grille { grid-template-columns: repeat(4, 1fr); }
+}
+
+/* Barre d’état dans l’en-tête sombre : fond translucide, contraste lisible. */
+.top .statusbar { background: rgba(255, 255, 255, 0.08); border-radius: 8px; padding: 6px 10px; }
+.top .statusbar.ok { background: rgba(134, 239, 172, 0.12); }
+.top .statusbar.err { background: rgba(252, 165, 165, 0.14); }
+/* Graphiques sur PC : largeur de lecture bornée pour que les étiquettes d’axe restent à taille normale. */
+@media (min-width: 900px) { .svg { max-width: 760px; margin: 0 auto; } }

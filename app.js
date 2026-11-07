@@ -7,6 +7,9 @@ import * as C from './finance/core.js';
 import { completerEspace, espaceFinanceVide, aujourdhui } from './finance/model.js';
 import { jeuFictif } from './finance/jeu-fictif.js';
 import { el, bouton } from './views/ui.js';
+import { ICONE_SECTION, icone, logo, enrichirBoutons } from './views/icones.js';
+
+const marque = () => el('div', { class: 'marque' }, logo(44), el('span', { text: 'Mon Patrimoine' }));
 import { rendreFinance } from './views/finance.js';
 
 const DB_NAME = 'mp-v5-dev';                 // base de DÉVELOPPEMENT, distincte de toute donnée réelle
@@ -87,7 +90,7 @@ function construireMenu() {
     href: '#/' + s.id,
     'aria-current': s.id === actuelle ? 'page' : false,
     onclick: () => { fermerMenu(); }
-  }, s.label, el('span', { class: 'phase', text: s.phase ? `Phase ${s.phase}` : '' }))));
+  }, el('span', { class: 'm-ico' }, icone(ICONE_SECTION[s.id] || 'tag', 20)), el('span', { class: 'm-lib', text: s.label }), el('span', { class: 'phase', text: s.phase ? `Phase ${s.phase}` : '' }))));
 }
 function ouvrirMenu(ouvrir) {
   const menu = document.getElementById('menu');
@@ -139,6 +142,7 @@ function render() {
   const fictif = st === 'unlocked' && !!vault.getState().finance.fictif;
   const bandeau = fictif ? el('div', { class: 'bandeau-fictif', role: 'status', text: 'DONNÉES FICTIVES DE TEST — aucune donnée réelle. Ne pas utiliser pour un suivi réel.' }) : null;
   app.replaceChildren(...(bandeau ? [bandeau, vue] : [vue]));
+  enrichirBoutons(app);
   updateStatusBar();
 }
 
@@ -157,6 +161,7 @@ function vueCreation() {
     }
   };
   const creation = el('section', { class: 'card' },
+    marque(),
     el('h2', { text: 'Créer votre coffre' }),
     el('div', { class: 'alert', text: '⚠️ Si vous perdez ce mot de passe, vos données seront définitivement perdues. Aucune récupération n’est possible.' }),
     p1, p2,
@@ -191,6 +196,7 @@ function vueVerrouillage() {
   };
   pw.addEventListener('keydown', e => { if (e.key === 'Enter') submit(); });
   return el('section', { class: 'card' },
+    marque(),
     el('h2', { text: 'Déverrouiller' }),
     pw,
     el('div', { class: 'row' }, el('button', { class: 'primary', text: 'Déverrouiller', onclick: submit })),
@@ -470,6 +476,7 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') fermerMenu()
 // ----- démarrage -----
 async function init() {
   log('Démarrage — aucun réseau utilisé');
+  document.getElementById('titre').before(logo(28));
   vault = createVault({ backend, onChange: onVaultChange });
   try { await vault.open(); } catch (e) { setMsg(errText(e), true); }
   render();

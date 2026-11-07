@@ -6,6 +6,7 @@ import { envelopeMovementsCount, coherence } from '../finance/validate.js';
 import { SPECS, preparer, valeursPour, nouvelId, aujourdhui, NATURES } from '../finance/model.js';
 import { courbe, barres, horizontal, anneau } from '../charts/svg.js';
 import { el, fm, pc, fd, labM, labL, cls, kpi, barre, tableau, bouton, formulaire, champPeriode } from './ui.js';
+import { icone, iconeCategorie } from './icones.js';
 
 const ui = {
   mois: null, periode: 'Mois', moisRapport: null,
@@ -170,7 +171,7 @@ function vueVariables(F) {
   const dep = rows.filter(x => !x.transfer);
   const lignes = rows.map(v => [
     fd(v.date),
-    el('span', {}, v.label || '—', v.transfer ? el('span', { class: 'tag', text: ' Transfert interne' }) : null),
+    el('span', { class: 'lib-cat' }, icone(iconeCategorie(v.cat), 16), el('span', {}, v.label || '—'), v.transfer ? el('span', { class: 'tag', text: 'Transfert interne' }) : null),
     v.cat, v.pay, v.ess, fm(v.amount), actionsLigne('var', v.id)
   ]);
   const filtres = el('div', { class: 'filtres' },
@@ -253,25 +254,28 @@ function vueTableau(F) {
   return el('div', {},
     entete('Tableau de bord', selecteurMois(m, v => { ui.mois = v; ctx.rerender(); })),
     alerteDepassements(ov),
+    el('h3', { class: 'bloc-titre', text: 'Flux du mois' }),
     el('div', { class: 'grille' },
-      kpi('Salaire net mensuel', fm(salaire)),
-      kpi('Revenus totaux', fm(c.inc)),
-      kpi('Dépenses du mois', fm(c.exp), 'Fixes + crédits + variables'),
-      kpi('Dépenses fixes restantes', fm(reste), m === cur ? 'Après aujourd’hui' : ''),
-      kpi('Dépenses variables', fm(c.V)),
-      kpi('Montant disponible', fm(c.disp), 'Après fixes, crédits et variables', cls(c.disp)),
-      kpi('Épargne réalisée', fm(c.sv)),
-      kpi('Taux d’épargne', pc(c.inc ? c.sv / c.inc * 100 : 0)),
-      kpi('Reste à vivre', fm(c.rav), 'Disponible − épargne affectée', cls(c.rav), true),
-      kpi('Dettes restantes', fm(C.debtsLeft(F, m))),
-      kpi('Patrimoine net', fm(t.net), 'Actifs − passifs', cls(t.net)),
-      kpi('Transferts internes', fm(transferts), 'Exclus des dépenses')),
+      kpi('Salaire net mensuel', fm(salaire), '', '', false, { icone: 'trending-up', ton: 'revenu' }),
+      kpi('Revenus totaux', fm(c.inc), '', '', false, { icone: 'wallet', ton: 'revenu' }),
+      kpi('Dépenses du mois', fm(c.exp), 'Fixes + crédits + variables', '', false, { icone: 'receipt', ton: 'depense' }),
+      kpi('Dépenses fixes restantes', fm(reste), m === cur ? 'Après aujourd’hui' : '', '', false, { icone: 'receipt', ton: 'depense' }),
+      kpi('Dépenses variables', fm(c.V), '', '', false, { icone: 'shopping-cart', ton: 'depense' }),
+      kpi('Montant disponible', fm(c.disp), 'Après fixes, crédits et variables', cls(c.disp), false, { icone: 'wallet' }),
+      kpi('Épargne réalisée', fm(c.sv), '', '', false, { icone: 'piggy-bank', ton: 'epargne' }),
+      kpi('Taux d’épargne', pc(c.inc ? c.sv / c.inc * 100 : 0), '', '', false, { icone: 'piggy-bank', ton: 'epargne' }),
+      kpi('Reste à vivre', fm(c.rav), 'Disponible − épargne affectée', cls(c.rav), false, { icone: 'target' }),
+      kpi('Transferts internes', fm(transferts), 'Exclus des dépenses', '', false, { icone: 'tag' })),
+    el('h3', { class: 'bloc-titre', text: 'Patrimoine et dettes' }),
+    el('div', { class: 'grille' },
+      kpi('Patrimoine net', fm(t.net), 'Actifs − passifs', cls(t.net), true, { icone: 'landmark', ton: 'patrimoine' }),
+      kpi('Dettes restantes', fm(C.debtsLeft(F, m)), '', '', false, { icone: 'credit-card', ton: 'dette' })),
     el('section', { class: 'card' }, barres({
       titre: 'Revenus, dépenses et épargne — 12 mois', labels: C.rows12(m).map(labM),
       series: [
-        { name: 'Revenus', color: '#0d9488', values: mois12.map(x => x.inc) },
-        { name: 'Dépenses', color: '#f59e0b', values: mois12.map(x => x.exp) },
-        { name: 'Épargne', color: '#6366f1', values: mois12.map(x => x.sv) }]
+        { name: 'Revenus', color: '#1d3557', values: mois12.map(x => x.inc) },
+        { name: 'Dépenses', color: '#b42318', values: mois12.map(x => x.exp) },
+        { name: 'Épargne', color: '#15803d', values: mois12.map(x => x.sv) }]
     })),
     el('section', { class: 'card' }, el('h3', { text: 'Dépenses par catégorie' }),
       anneau({ titre: 'Dépenses par catégorie', items: C.catTot(F, [m]).map(([label, value]) => ({ label, value })), vide: 'Aucune dépense ce mois-ci.' })),
@@ -434,8 +438,8 @@ function projectionProjet(p, m) {
   return courbe({
     titre: 'Capital projeté : ' + p.name, labels,
     series: [
-      { name: 'Capital projeté', color: '#0d9488', values: s },
-      { name: 'Objectif', color: '#ef4444', values: s.map(() => +p.target || 0) }]
+      { name: 'Capital projeté', color: '#1d3557', values: s },
+      { name: 'Objectif', color: '#b8892e', values: s.map(() => +p.target || 0) }]
   });
 }
 
@@ -470,9 +474,9 @@ function vuePatrimoine(F) {
       courbe({
         titre: 'Évolution du patrimoine', labels: F.snaps.map(s => labM(s.m)),
         series: [
-          { name: 'Actifs', color: '#0d9488', values: F.snaps.map(s => s.a) },
-          { name: 'Passifs', color: '#f59e0b', values: F.snaps.map(s => s.p) },
-          { name: 'Patrimoine net', color: '#6366f1', values: F.snaps.map(s => s.n) }],
+          { name: 'Actifs', color: '#1d3557', values: F.snaps.map(s => s.a) },
+          { name: 'Passifs', color: '#b45309', values: F.snaps.map(s => s.p) },
+          { name: 'Patrimoine net', color: '#b8892e', values: F.snaps.map(s => s.n) }],
         vide: 'Le graphique apparaîtra dès l’enregistrement du premier mois.'
       })),
     el('section', { class: 'card' }, el('h3', { text: 'Composition des actifs' }),
@@ -507,13 +511,13 @@ function vueRapports(F) {
     el('section', { class: 'card' }, barres({
       titre: 'Revenus, dépenses et épargne', labels: m12.map(labM),
       series: [
-        { name: 'Revenus', color: '#0d9488', values: cal12.map(c => c.inc) },
-        { name: 'Dépenses', color: '#f59e0b', values: cal12.map(c => c.exp) },
-        { name: 'Épargne', color: '#6366f1', values: cal12.map(c => c.sv) }]
+        { name: 'Revenus', color: '#1d3557', values: cal12.map(c => c.inc) },
+        { name: 'Dépenses', color: '#b42318', values: cal12.map(c => c.exp) },
+        { name: 'Épargne', color: '#15803d', values: cal12.map(c => c.sv) }]
     })),
     el('section', { class: 'card' }, courbe({
       titre: 'Épargne cumulée (12 derniers mois)', labels: m12.map(labM),
-      series: [{ name: 'Épargne cumulée', color: '#0d9488', values: m12.map(x => C.cumSav(F, x)) }]
+      series: [{ name: 'Épargne cumulée', color: '#15803d', values: m12.map(x => C.cumSav(F, x)) }]
     })),
     el('section', { class: 'card' }, el('h3', { text: 'Détail par mois' }),
       tableau(['Mois', { t: 'Revenus', n: true }, { t: 'Dépenses', n: true }, { t: 'Épargne', n: true }, { t: 'Reste à vivre', n: true }, { t: 'Budget', n: true }, { t: 'Écart', n: true }],
