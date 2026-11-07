@@ -1,6 +1,6 @@
 {
-  "name": "Mon Patrimoine — Test coffre",
-  "short_name": "MP Test",
+  "name": "Mon Patrimoine (V5, développement)",
+  "short_name": "Patrimoine V5",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

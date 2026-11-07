@@ -1,71 +1,102 @@
-// Version de test pour iPhone — coffre chiffré uniquement. Données fictives. Aucun réseau.
-import { createVault, idbBackend, AUTOLOCK_MIN_RANGE } from './src/vault.js';
+// Mon Patrimoine V5 — phase 1 : coquille, verrouillage, navigation, coffre vide.
+// Aucun appel réseau. Toutes les données passent par le coffre chiffré (src/vault.js).
+// Espaces logiques : state.finance (phase 2) et state.retraite (phase 3), un seul mot de passe.
+import { createVault, idbBackend, AUTOLOCK_MIN_RANGE, VaultError } from './src/vault.js';
+import * as C from './finance/core.js';
+import { completerEspace, espaceFinanceVide, aujourdhui } from './finance/model.js';
+import { jeuFictif } from './finance/jeu-fictif.js';
+import { el, bouton } from './views/ui.js';
+import { rendreFinance } from './views/finance.js';
 
-const DB_NAME = 'mp-test-v5';                       // base distincte de vos données réelles
-const FICTIVE_INITIAL = {
-  banner: 'DONNÉES FICTIVES DE TEST',
-  items: [{ id: 't1', label: 'DONNEE_FICTIVE Dépense test 1', amount: 12.34 }]
-};
-const MARKERS = ['DONNEE_FICTIVE', 'Dépense test'];  // textes qui ne doivent JAMAIS apparaître en clair dans le stockage
+const DB_NAME = 'mp-v5-dev';                 // base de DÉVELOPPEMENT, distincte de toute donnée réelle
+const SCHEMA = 5;
+const INITIAL_STATE = Object.freeze({ schema: SCHEMA, finance: espaceFinanceVide(), retraite: {} });
+const DELAIS = [1, 2, 5, 10, 15, 30, 60];    // minutes, toutes dans AUTOLOCK_MIN_RANGE
 
-// ----- stockage réel + possibilité de simuler une panne d'écriture (test uniquement) -----
-const real = idbBackend({ name: DB_NAME, store: 'kv' });
-let failWrites = false;
-const backend = {
-  read: keys => real.read(keys),
-  commit: ops => failWrites
-    ? Promise.reject(new Error('Erreur d’écriture simulée (test)'))
-    : real.commit(ops)
-};
+// Sections. « phase » : numéro de la phase qui porte encore la rubrique (0 = portée).
+const SECTIONS = [
+  { id: 'tableau', label: 'Tableau de bord', phase: 0 },
+  { id: 'budget', label: 'Budget mensuel', phase: 0 },
+  { id: 'revenus', label: 'Revenus', phase: 0 },
+  { id: 'depenses-fixes', label: 'Dépenses fixes', phase: 0 },
+  { id: 'depenses-variables', label: 'Dépenses variables', phase: 0 },
+  { id: 'epargne', label: 'Épargne', phase: 0 },
+  { id: 'dettes', label: 'Dettes', phase: 0 },
+  { id: 'objectifs', label: 'Objectifs financiers', phase: 0 },
+  { id: 'projets', label: 'Projets d’épargne', phase: 0 },
+  { id: 'patrimoine', label: 'Patrimoine personnel', phase: 0 },
+  { id: 'retraite', label: 'Retraite', phase: 3 },
+  { id: 'rapports', label: 'Rapports', phase: 0 },
+  { id: 'donnees', label: 'Données et réglages', phase: 0 }
+];
+const FINANCE_IDS = new Set(['tableau', 'budget', 'revenus', 'depenses-fixes', 'depenses-variables', 'epargne', 'dettes', 'objectifs', 'projets', 'patrimoine', 'rapports']);
 
+const backend = idbBackend({ name: DB_NAME, store: 'kv' });
 let vault = null;
-let vstat = null;          // dernier état publié par le coffre
-let lastUnlockMs = null;   // durée réelle du dernier déverrouillage
+let vstat = null;
+let lastUnlockMs = null;
 let lastHidden = null;
 
 // ----- utilitaires -----
-function el(tag, attrs = {}, ...kids) {
-  const n = document.createElement(tag);
-  for (const [k, v] of Object.entries(attrs)) {
-    if (k.startsWith('on')) n.addEventListener(k.slice(2), v);
-    else if (k === 'text') n.textContent = v;
-    else if (v !== false && v != null) n.setAttribute(k, v === true ? '' : String(v));
-  }
-  for (const c of kids) if (c != null) n.append(c instanceof Node ? c : document.createTextNode(String(c)));
-  return n;
-}
+const errText = e => (e && e.message) ? e.message : String(e);
 const ts = () => new Date().toLocaleTimeString('fr-FR');
-const journalEntries = [];
+
+const journal = [];
 function log(msg) {
-  journalEntries.unshift(`${ts()} — ${msg}`);
-  journalEntries.length = Math.min(journalEntries.length, 40);
+  journal.unshift(`${ts()} — ${msg}`);
+  journal.length = Math.min(journal.length, 30);
   const ol = document.getElementById('journal');
-  if (ol) ol.replaceChildren(...journalEntries.map(t => el('li', { text: t })));
+  if (ol) ol.replaceChildren(...journal.map(t => el('li', { text: t })));
 }
 function setMsg(text, isErr = false) {
   const m = document.getElementById('msg');
+  if (!m) return;
   m.textContent = text;
   m.className = isErr ? 'err' : '';
 }
-const errText = e => (e && e.message) ? e.message : String(e);
 
-// ----- barre d'état de sauvegarde -----
+// ----- barre d’état -----
 function updateStatusBar() {
   const bar = document.getElementById('statusbar');
   const s = vstat;
   let txt = 'Chargement…', cls = '';
   if (s) {
     if (s.status === 'locked') { txt = '🔒 Verrouillé'; cls = 'ok'; }
-    else if (s.status === 'uninitialized') { txt = 'Aucun coffre : créez-le ci-dessous'; }
+    else if (s.status === 'uninitialized') { txt = 'Aucun coffre : créez-le pour commencer'; }
     else if (s.status === 'unlocked') {
       if (s.saveStatus === 'saving') { txt = '⏳ Enregistrement en cours…'; cls = 'busy'; }
-      else if (s.unsaved || s.saveStatus === 'error') { txt = '⚠️ NON ENREGISTRÉ — la dernière modification n’est pas sauvegardée. Réessayez.'; cls = 'err'; }
+      else if (s.unsaved || s.saveStatus === 'error') { txt = '⚠️ Non enregistré : réessayez'; cls = 'err'; }
       else { txt = '✅ Enregistré' + (s.lastSavedAt ? ' à ' + new Date(s.lastSavedAt).toLocaleTimeString('fr-FR') : ''); cls = 'ok'; }
     } else { txt = 'Erreur de stockage : ' + (s.lastError || 'inconnue'); cls = 'err'; }
   }
   bar.textContent = txt;
   bar.className = 'statusbar ' + cls;
 }
+
+// ----- routage (hash) : #/section -----
+function sectionCourante() {
+  const id = (location.hash || '').replace(/^#\//, '');
+  return SECTIONS.find(s => s.id === id) || SECTIONS[0];
+}
+
+function construireMenu() {
+  const menu = document.getElementById('menu');
+  const actuelle = sectionCourante().id;
+  menu.replaceChildren(...SECTIONS.map(s => el('a', {
+    href: '#/' + s.id,
+    'aria-current': s.id === actuelle ? 'page' : false,
+    onclick: () => { fermerMenu(); }
+  }, s.label, el('span', { class: 'phase', text: s.phase ? `Phase ${s.phase}` : '' }))));
+}
+function ouvrirMenu(ouvrir) {
+  const menu = document.getElementById('menu');
+  const btn = document.getElementById('menu-btn');
+  menu.hidden = !ouvrir;
+  btn.setAttribute('aria-expanded', String(ouvrir));
+  // Le menu s'insère sous l'en-tête : on remonte en haut pour qu'il soit visible même après un long défilement.
+  if (ouvrir) window.scrollTo({ top: 0, behavior: 'auto' });
+}
+function fermerMenu() { ouvrirMenu(false); }
 
 // ----- écouteur du coffre -----
 function onVaultChange(s) {
@@ -75,7 +106,6 @@ function onVaultChange(s) {
     if (prev.status === 'unlocked' && s.status === 'locked') log('Verrouillé');
     if (prev.status === 'locked' && s.status === 'unlocked') log('Déverrouillé');
   }
-  // Redessiner à chaque événement quand le coffre est ouvert : la liste doit refléter l'état en mémoire.
   if (s.status === 'unlocked' || (prev && prev.status !== s.status)) render();
   if (s.saveStatus === 'error' && (!prev || prev.saveStatus !== 'error')) {
     log('Erreur d’écriture : ' + s.lastError + ' — données précédentes intactes');
@@ -83,42 +113,60 @@ function onVaultChange(s) {
   updateStatusBar();
 }
 
-// ----- vues -----
+// ----- rendu -----
 function render() {
   const app = document.getElementById('app');
   const st = vstat ? vstat.status : 'loading';
-  let view;
-  if (st === 'uninitialized') view = viewCreate();
-  else if (st === 'locked') view = viewLocked();
-  else if (st === 'unlocked') view = viewUnlocked();
-  else if (st === 'error') view = el('section', { class: 'card' }, el('p', { text: 'Stockage inaccessible sur cet appareil (' + (vstat.lastError || '') + ').' }));
-  else view = el('p', { text: 'Chargement…' });
-  app.replaceChildren(view);
+  const menuBtn = document.getElementById('menu-btn');
+  const titre = document.getElementById('titre');
+  menuBtn.hidden = st !== 'unlocked';
+  if (st !== 'unlocked') { fermerMenu(); }
+  let vue;
+  if (st === 'uninitialized') { titre.textContent = 'Création du coffre'; vue = vueCreation(); }
+  else if (st === 'locked') { titre.textContent = 'Mon Patrimoine'; vue = vueVerrouillage(); }
+  else if (st === 'unlocked') {
+    const s = sectionCourante();
+    titre.textContent = s.label;
+    construireMenu();
+    if (s.id === 'donnees') vue = vueDonnees();
+    else if (FINANCE_IDS.has(s.id)) vue = rendreFinance(s.id, contexteFinance());
+    else vue = vueSection(s);
+  }
+  else if (st === 'error') { titre.textContent = 'Stockage indisponible'; vue = el('section', { class: 'card' }, el('p', { text: 'Stockage inaccessible sur cet appareil (' + (vstat.lastError || '') + ').' })); }
+  else vue = el('p', { text: 'Chargement…' });
+  // Bandeau permanent tant que l'espace Finance contient le jeu FICTIF (marqueur « fictif »).
+  const fictif = st === 'unlocked' && !!vault.getState().finance.fictif;
+  const bandeau = fictif ? el('div', { class: 'bandeau-fictif', role: 'status', text: 'DONNÉES FICTIVES DE TEST — aucune donnée réelle. Ne pas utiliser pour un suivi réel.' }) : null;
+  app.replaceChildren(...(bandeau ? [bandeau, vue] : [vue]));
   updateStatusBar();
 }
 
-function viewCreate() {
-  const p1 = el('input', { type: 'password', autocomplete: 'new-password', placeholder: 'Mot de passe (10 caractères minimum)' });
-  const p2 = el('input', { type: 'password', autocomplete: 'new-password', placeholder: 'Confirmer le mot de passe' });
+function vueCreation() {
+  const p1 = el('input', { id: 'pw1', type: 'password', autocomplete: 'new-password', placeholder: 'Mot de passe (10 caractères minimum)' });
+  const p2 = el('input', { id: 'pw2', type: 'password', autocomplete: 'new-password', placeholder: 'Confirmer le mot de passe' });
+  const creer = async () => {
+    try {
+      await vault.create(p1.value, p2.value, INITIAL_STATE);
+      log('Coffre créé (vide)');
+      setMsg('');
+    } catch (e) {
+      const msg = e instanceof VaultError ? e.message : errText(e);
+      setMsg(msg, true);
+      log('Création refusée : ' + msg);
+    }
+  };
   return el('section', { class: 'card' },
-    el('h2', { text: '1. Créer le coffre de test' }),
-    el('div', { class: 'alert danger', text: '⚠️ Si vous perdez ce mot de passe, les données seront définitivement perdues. Aucune récupération n’est possible.' }),
+    el('h2', { text: 'Créer votre coffre' }),
+    el('div', { class: 'alert', text: '⚠️ Si vous perdez ce mot de passe, vos données seront définitivement perdues. Aucune récupération n’est possible.' }),
     p1, p2,
-    el('button', {
-      class: 'primary', text: 'Créer le coffre (données fictives)',
-      onclick: async () => {
-        try {
-          await vault.create(p1.value, p2.value, FICTIVE_INITIAL);
-          log('Coffre créé avec des données fictives');
-          setMsg('Coffre créé.');
-        } catch (e) { setMsg(errText(e), true); log('Création échouée : ' + errText(e)); }
-      }
-    })
+    el('div', { class: 'row' }, el('button', { class: 'primary', text: 'Créer le coffre', onclick: creer })),
+    el('p', { id: 'msg' }),
+    el('p', { class: 'petit', text: 'Le coffre est vide. Les données ne sont enregistrées qu’une fois chiffrées sur cet appareil.' })
   );
 }
 
-function viewLocked() {
-  const pw = el('input', { type: 'password', autocomplete: 'current-password', placeholder: 'Mot de passe' });
+function vueVerrouillage() {
+  const pw = el('input', { id: 'pw', type: 'password', autocomplete: 'current-password', placeholder: 'Mot de passe' });
   const submit = async () => {
     const t0 = performance.now();
     try {
@@ -127,99 +175,126 @@ function viewLocked() {
       log(`Déverrouillage en ${lastUnlockMs} ms` + (r.recovered ? ' (copie de secours utilisée)' : ''));
       pw.value = '';
       setMsg('');
-      render();
     } catch (e) {
       lastUnlockMs = Math.round(performance.now() - t0);
-      setMsg(errText(e), true);
-      log(`Échec du déverrouillage après ${lastUnlockMs} ms : ${errText(e)}`);
+      const msg = e instanceof VaultError ? e.message : errText(e);
+      setMsg(msg, true);
+      log(`Échec du déverrouillage (${lastUnlockMs} ms) : ${msg}`);
     }
   };
   pw.addEventListener('keydown', e => { if (e.key === 'Enter') submit(); });
   return el('section', { class: 'card' },
-    el('h2', { text: '2. Déverrouiller' }),
+    el('h2', { text: 'Déverrouiller' }),
     pw,
-    el('button', { class: 'primary', text: 'Déverrouiller', onclick: submit }),
-    el('p', { class: 'mono', text: lastUnlockMs != null ? `Dernier déverrouillage : ${lastUnlockMs} ms` : 'Aucun déverrouillage mesuré sur cette session.' }),
-    el('hr'),
-    el('h2', { text: 'Réinitialiser le coffre de TEST' }),
-    el('p', { text: 'Efface uniquement la base de test (mp-test-v5). Vos données réelles ne sont pas concernées.' }),
-    el('button', {
-      class: 'danger', text: 'Effacer le coffre de test',
-      onclick: async () => {
-        if (!confirm('Effacer le coffre de TEST uniquement ?')) return;
-        await real.commit([{ key: 'current', delete: true }, { key: 'meta', delete: true }, { key: 'prev', delete: true }]);
-        location.reload();
-      }
-    })
+    el('div', { class: 'row' }, el('button', { class: 'primary', text: 'Déverrouiller', onclick: submit })),
+    el('p', { id: 'msg' }),
+    el('p', { class: 'petit', text: lastUnlockMs != null ? `Dernier déverrouillage : ${lastUnlockMs} ms` : '' })
   );
 }
 
-function viewUnlocked() {
-  const state = vault.getState();
-  const items = state.items || [];
-  const selAutolock = el('select', {
+// Contexte des rubriques financières : lecture de l'espace Finance, écriture chiffrée.
+// Chaque écriture met aussi à jour la photo du patrimoine du mois (comme la V4).
+function contexteFinance() {
+  return {
+    F: completerEspace(vault.getState().finance),
+    rerender: () => render(),
+    enregistrer: (fn) => vault.update(d => {
+      d.finance = completerEspace(d.finance);
+      fn(d.finance);
+      d.finance.snaps = C.upsertSnap(d.finance.snaps, C.snapRecord(d.finance, aujourdhui().slice(0, 7)));
+    }).catch(e => setMsg(errText(e), true))
+  };
+}
+
+function vueSection(s) {
+  const enCours = s.phase === 1 ? 'cette rubrique' : `cette rubrique sera portée en phase ${s.phase}`;
+  return el('section', { class: 'card' },
+    el('h2', { text: s.label }),
+    el('p', { text: `Rubrique réservée : ${enCours}. Aucune donnée n’est affichée ni modifiée pour l’instant.` }),
+    el('p', { class: 'petit', text: 'Le coffre fonctionne déjà : verrouillage automatique, navigation et stockage chiffré.' })
+  );
+}
+
+function vueDonnees() {
+  const st = vault.getState();
+  const selDelai = el('select', {
+    id: 'delai',
     onchange: async e => {
       try {
-        const n = await vault.setAutoLockMinutes(+e.target.value);
+        const n = await vault.setAutoLockMinutes(Number(e.target.value));
         log(`Délai de verrouillage réglé à ${n} min`);
+        setMsg('Délai enregistré.');
       } catch (err) { setMsg(errText(err), true); }
     }
-  }, ...[1, 2, 5, 10, 30, 60].map(m => el('option', { value: m, selected: m === vstat.autoLockMin, text: `${m} minute${m > 1 ? 's' : ''}` })));
-  const chkFail = el('input', { type: 'checkbox', onchange: e => { failWrites = e.target.checked; log(failWrites ? 'Panne d’écriture SIMULÉE activée' : 'Panne d’écriture simulée désactivée'); } });
-  chkFail.checked = failWrites;
+  }, ...DELAIS.filter(m => m >= AUTOLOCK_MIN_RANGE[0] && m <= AUTOLOCK_MIN_RANGE[1]).map(m =>
+    el('option', { value: m, selected: m === vstat.autoLockMin, text: `${m} minute${m > 1 ? 's' : ''}` })));
 
-  const addItem = () => vault.update(d => {
-    d.items.push({ id: 't' + Date.now(), label: 'DONNEE_FICTIVE Dépense test ' + (d.items.length + 1), amount: Math.round(Math.random() * 10000) / 100 });
-  }).then(r => { if (!r.saved) log('Enregistrement échoué : modification conservée en mémoire, NON enregistrée'); else log('Dépense fictive ajoutée et enregistrée'); });
+  const ancien = el('input', { id: 'pw-ancien', type: 'password', autocomplete: 'current-password', placeholder: 'Mot de passe actuel' });
+  const nouveau = el('input', { id: 'pw-nouveau', type: 'password', autocomplete: 'new-password', placeholder: 'Nouveau mot de passe (10 caractères minimum)' });
+  const confirmation = el('input', { id: 'pw-confirm', type: 'password', autocomplete: 'new-password', placeholder: 'Confirmer le nouveau mot de passe' });
+  const changer = async () => {
+    if (nouveau.value !== confirmation.value) { setMsg('Les deux nouveaux mots de passe ne correspondent pas.', true); return; }
+    try {
+      await vault.changePassword(ancien.value, nouveau.value);
+      ancien.value = ''; nouveau.value = ''; confirmation.value = '';
+      log('Mot de passe modifié');
+      setMsg('Mot de passe modifié. Les données sont conservées.');
+    } catch (e) {
+      const msg = e instanceof VaultError ? e.message : errText(e);
+      setMsg(msg, true);
+      log('Changement de mot de passe refusé : ' + msg);
+    }
+  };
 
-  const changeLast = () => vault.update(d => {
-    if (d.items.length) d.items[d.items.length - 1].amount = Math.round((d.items[d.items.length - 1].amount + 1) * 100) / 100;
-  }).then(r => log(r.saved ? 'Montant modifié et enregistré' : 'Modification NON enregistrée (erreur d’écriture)'));
+  const setMsgJeu = (t) => { const n = document.getElementById('msg-jeu'); if (n) n.textContent = t; };
+  const jeu = el('section', { class: 'card' },
+    el('h2', { text: 'Données de test (fictives)' }),
+    el('p', { class: 'alert', text: 'Ces boutons remplacent l’espace Finance par un jeu FICTIF ou le vident. Ils servent aux tests et seront retirés avant toute utilisation réelle.' }),
+    el('div', { class: 'row' },
+      bouton('Charger le jeu fictif', async () => {
+        try { await vault.update(d => { d.finance = jeuFictif(); }); setMsgJeu('Jeu fictif chargé (aucune donnée réelle).'); }
+        catch (e) { setMsgJeu(errText(e)); }
+      }),
+      bouton('Vider l’espace Finance', async () => {
+        try { await vault.update(d => { d.finance = espaceFinanceVide(); }); setMsgJeu('Espace Finance vidé.'); }
+        catch (e) { setMsgJeu(errText(e)); }
+      }, { danger: true })),
+    el('p', { id: 'msg-jeu' }));
 
-  const removeLast = () => vault.update(d => { d.items.pop(); })
-    .then(r => log(r.saved ? 'Dernière ligne supprimée et enregistrée' : 'Suppression NON enregistrée (erreur d’écriture)'));
-
-  return el('section', { class: 'card' },
-    el('h2', { text: '3. Données fictives' }),
-    el('ul', { class: 'items' }, ...items.map(it => el('li', { text: `${it.label} — ${Number(it.amount).toFixed(2)} MAD` }))),
-    el('button', { class: 'primary', text: 'Ajouter une ligne fictive', onclick: addItem }),
-    el('button', { text: 'Modifier le dernier montant (+1)', onclick: changeLast }),
-    el('button', { text: 'Supprimer la dernière ligne', onclick: removeLast }),
-    el('button', { text: 'Réessayer l’enregistrement', onclick: () => vault.retry().then(r => log(r.saved ? 'Réessai réussi' : 'Réessai échoué')) }),
-    el('hr'),
-    el('h2', { text: '4. Tests' }),
-    el('label', { class: 'chk' }, chkFail, el('span', { text: 'Simuler une erreur d’écriture' })),
-    el('button', {
-      text: 'Vérifier le stockage (données en clair ?)',
-      onclick: async () => {
-        const r = await real.read(['meta', 'current', 'prev']);
-        const raw = JSON.stringify(r);
-        const found = MARKERS.filter(m => raw.includes(m));
-        const cur = r.current || {};
-        setMsg(
-          `Taille du stockage : ${raw.length} caractères. Chiffrement : ${cur.cipher ? cur.cipher.name : '—'}, PBKDF2 ${cur.kdf ? cur.kdf.iter : '—'} itérations. ` +
-          `Aperçu chiffré : ${cur.data ? cur.data.slice(0, 40) + '…' : '—'}. ` +
-          `Textes en clair trouvés : ${found.length ? found.join(', ') + ' ❌' : 'AUCUN ✅'}`,
-          found.length > 0
-        );
-        log('Vérification du stockage : ' + (found.length ? 'DONNÉES EN CLAIR ❌' : 'aucune donnée en clair ✅'));
-      }
-    }),
-    el('p', { class: 'mono', text: lastUnlockMs != null ? `Dernier déverrouillage : ${lastUnlockMs} ms` : '' }),
-    el('label', {}, el('span', { text: 'Verrouillage automatique après inactivité' }), selAutolock),
-    el('button', {
-      text: 'Verrouiller maintenant',
-      onclick: async () => {
-        const ok = await vault.lock();
-        if (ok === false) setMsg('Verrouillage impossible : des modifications ne sont pas enregistrées. Réessayez d’abord.', true);
-      }
-    })
+  return el('div', {},
+    jeu,
+    el('section', { class: 'card' },
+      el('h2', { text: 'Sécurité' }),
+      el('label', {}, el('span', { text: 'Verrouillage automatique après inactivité' }), selDelai),
+      el('div', { class: 'row' }, el('button', {
+        text: 'Verrouiller maintenant',
+        onclick: async () => {
+          const ok = await vault.lock();
+          if (ok === false) setMsg('Verrouillage impossible : des modifications ne sont pas enregistrées. Réessayez.', true);
+        }
+      }))
+    ),
+    el('section', { class: 'card' },
+      el('h2', { text: 'Changer le mot de passe' }),
+      el('p', { class: 'petit', text: 'Le nouveau mot de passe remplace l’ancien pour les deux espaces (Finance et Retraite).' }),
+      ancien, nouveau, confirmation,
+      el('div', { class: 'row' }, el('button', { class: 'primary', text: 'Changer le mot de passe', onclick: changer })),
+      el('p', { id: 'msg' })
+    ),
+    el('section', { class: 'card' },
+      el('h2', { text: 'Diagnostic' }),
+      el('p', { class: 'mono', text: `Format du coffre : ${vstat.status === 'unlocked' ? 'chiffré AES-GCM' : '—'}` }),
+      el('p', { class: 'mono', text: `Espaces : finance (${Object.keys(st.finance || {}).length} entrée(s)), retraite (${Object.keys(st.retraite || {}).length} entrée(s))` }),
+      el('p', { class: 'mono', text: lastUnlockMs != null ? `Dernier déverrouillage : ${lastUnlockMs} ms` : 'Aucun déverrouillage mesuré.' }),
+      el('ol', { id: 'journal' })
+    )
   );
 }
 
 // ----- verrouillage automatique et arrière-plan -----
-const ACTIVITY = ['pointerdown', 'keydown', 'touchstart'];
-ACTIVITY.forEach(ev => document.addEventListener(ev, () => { if (vault) vault.touch(); }, { passive: true }));
+// Toute interaction compte comme activité, y compris les sélecteurs natifs (qui ne génèrent pas toujours de pointeur).
+['pointerdown', 'keydown', 'touchstart', 'touchmove', 'focusin', 'input', 'change'].forEach(ev =>
+  document.addEventListener(ev, () => { if (vault) vault.touch(); }, { passive: true }));
 
 setInterval(async () => {
   if (!vault || !vstat || vstat.status !== 'unlocked') return;
@@ -227,9 +302,9 @@ setInterval(async () => {
   if (locked) log('Verrouillage automatique après inactivité');
 }, 5000);
 
-async function checkOnResume(reason) {
+async function verifierAuRetour(raison) {
   if (!vault) return;
-  log(reason);
+  log(raison);
   const locked = await vault.checkIdle();
   if (locked) log('Verrouillage automatique au retour (délai dépassé)');
 }
@@ -239,23 +314,26 @@ document.addEventListener('visibilitychange', () => {
     log('Application passée en arrière-plan');
   } else {
     const s = lastHidden ? Math.round((Date.now() - lastHidden) / 1000) : 0;
-    checkOnResume(`Retour au premier plan après ${s} s`);
+    verifierAuRetour(`Retour au premier plan après ${s} s`);
   }
 });
-window.addEventListener('pageshow', e => { if (e.persisted) checkOnResume('Page restaurée depuis le cache'); });
+window.addEventListener('pageshow', e => { if (e.persisted) verifierAuRetour('Page restaurée depuis le cache'); });
+window.addEventListener('hashchange', () => { if (vstat && vstat.status === 'unlocked') render(); });
+document.getElementById('menu-btn').addEventListener('click', () => {
+  const ouvert = document.getElementById('menu').hidden;
+  ouvrirMenu(ouvert);
+});
 
 // ----- démarrage -----
 async function init() {
-  log('Démarrage (test) — aucun réseau utilisé');
+  log('Démarrage — aucun réseau utilisé');
   vault = createVault({ backend, onChange: onVaultChange });
-  try {
-    await vault.open();
-  } catch (e) { setMsg(errText(e), true); }
+  try { await vault.open(); } catch (e) { setMsg(errText(e), true); }
   render();
   if (navigator.storage && navigator.storage.persist) {
     try {
-      const granted = await navigator.storage.persist();
-      log('Stockage persistant demandé : ' + (granted ? 'accordé' : 'non accordé'));
+      const accorde = await navigator.storage.persist();
+      log('Stockage persistant : ' + (accorde ? 'accordé' : 'non accordé'));
     } catch (e) { log('Demande de stockage persistant impossible'); }
   }
   if ('serviceWorker' in navigator) {

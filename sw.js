@@ -1,41 +1,41 @@
-// Service worker : mise en cache des fichiers de l'application pour le fonctionnement hors ligne.
-// Aucune requête vers un autre domaine n'est faite ni mise en cache.
-// Pour publier une nouvelle version : incrémenter CACHE_NAME (sinon l'ancienne version reste en cache).
-const CACHE_NAME = 'mp-test-v1';
+// Service worker V5 : cache d’application uniquement. Aucune donnée financière n’est mise en cache.
+const CACHE = 'mp-v5-phase2-4';
 const FILES = [
   './',
-  './index.html',
   './app.js',
-  './style.css',
+  './charts/svg.js',
+  './finance/core.js',
+  './finance/jeu-fictif.js',
+  './finance/model.js',
+  './finance/validate.js',
+  './icons/icon-180.png',
+  './icons/icon-192.png',
+  './icons/icon-512.png',
+  './index.html',
   './manifest.json',
   './src/crypto.js',
   './src/vault.js',
-  './icons/icon-180.png',
-  './icons/icon-192.png',
-  './icons/icon-512.png'
+  './style.css',
+  './views/finance.js',
+  './views/ui.js'
 ];
 
-self.addEventListener('install', event => {
-  event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then(cache => cache.addAll(FILES))
-      .then(() => self.skipWaiting())
-  );
+self.addEventListener('install', e => {
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting()));
 });
 
-self.addEventListener('activate', event => {
-  event.waitUntil(
+self.addEventListener('activate', e => {
+  e.waitUntil(
     caches.keys()
-      .then(keys => Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k))))
+      .then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });
 
-self.addEventListener('fetch', event => {
-  const url = new URL(event.request.url);
-  if (event.request.method !== 'GET' || url.origin !== self.location.origin) return;
-  event.respondWith(
-    caches.match(event.request, { ignoreSearch: true })
-      .then(cached => cached || fetch(event.request))
-  );
+self.addEventListener('fetch', e => {
+  const req = e.request;
+  if (req.method !== 'GET') return;
+  const url = new URL(req.url);
+  if (url.origin !== self.location.origin) return;   // aucune requête externe n’est servie ni mise en cache
+  e.respondWith(caches.match(req).then(r => r || fetch(req)));
 });

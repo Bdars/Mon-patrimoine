@@ -2,30 +2,28 @@
 <html lang="fr">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Patrimoine">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta name="apple-mobile-web-app-title" content="MP Test">
 <meta name="theme-color" content="#0d9488">
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icons/icon-180.png">
 <link rel="stylesheet" href="style.css">
-<title>Mon Patrimoine — Test coffre</title>
+<title>Mon Patrimoine (V5, développement)</title>
 </head>
 <body>
-<header>
-  <h1>Mon Patrimoine — Test du coffre</h1>
-  <div class="banner">DONNÉES FICTIVES — version de test, aucune donnée réelle</div>
+<header class="top">
+  <button id="menu-btn" class="menu" type="button" aria-expanded="false" aria-controls="menu" hidden>☰ Sections</button>
+  <h1 id="titre">Mon Patrimoine</h1>
+  <div id="statusbar" class="statusbar" role="status" aria-live="polite">Chargement…</div>
 </header>
-<div id="statusbar" class="statusbar">Chargement…</div>
-<main id="app"></main>
-<div id="msg"></div>
-<section class="card">
-  <h2>Journal de test (en mémoire, non enregistré)</h2>
-  <ol id="journal"></ol>
-</section>
-<footer><p>Aucune donnée n’est envoyée hors de cet appareil.</p></footer>
+<nav id="menu" class="menu-list" hidden aria-label="Sections"></nav>
+<main id="app"><p>Chargement…</p></main>
+<footer class="pied">
+  Version de développement V5. Aucune donnée réelle. Aucune donnée n’est envoyée hors de cet appareil.
+</footer>
 <script type="module" src="app.js"></script>
 </body>
 </html>
